@@ -135,6 +135,8 @@ first ten come from different ports.
   * <a href="#agent"><code>coap.<b>Agent</b></code></a>
   * <a href="#globalAgent"><code>coap.<b>globalAgent</b></code></a>
   * <a href="#globalAgentIPv6"><code>coap.<b>globalAgentIPv6</b></code></a>
+  * <a href="#updateTiming"><code>coap.<b>updateTiming</b></code></a>
+  * <a href="#defaultTiming"><code>coap.<b>defaultTiming</b></code></a>
 
 -------------------------------------------------------
 <a name="request"></a>
@@ -176,6 +178,7 @@ If it is an object:
   will be emitted for each received response. It's user's responsibility to set proper multicast `host` parameter
   in request configuration. Default `false`.
 - `multicastTimeout`: time to wait for multicast reponses in milliseconds. It is only applicable in case if `multicast` is `true`. Default `20000 ms`.
+- `retrySend`: overwrite the default maxRetransmit, useful when you want to use a custom retry count for a request
 
 
 `coap.request()` returns an instance of <a
@@ -217,16 +220,17 @@ The constructor can be given an optional options object, containing one of the f
 * `proxy`: indicates that the server should behave like a proxy for incoming requests containing the `Proxy-Uri` header.
   An example of how the proxy feature works, refer to the example in the `/examples` folder. Defaults to `false`.
 * `multicastAddress`: Optional. Use this in order to force server to listen on multicast address
-* `multicastInterface`: Optional. Use this in order to force server to listen on multicast interface. This is only applicable 
+* `multicastInterface`: Optional. Use this in order to force server to listen on multicast interface. This is only applicable
   if `multicastAddress` is set. If absent, server will try to listen `multicastAddress` on all available interfaces
 * `piggybackReplyMs`: set the number of milliseconds to wait for a
   biggyback response. Default 50.
+* `sendAcksForNonConfirmablePackets`: Optional. Use this to suppress sending ACK messages for non-confirmable packages
 
 #### Event: 'request'
 
 `function (request, response) { }`
 
-Emitted each time there is a request. 
+Emitted each time there is a request.
 `request` is an instance of <a
 href='#incoming'><code>IncomingMessage</code></a> and `response` is
 an instance of <a
@@ -280,7 +284,7 @@ It is HTTP-compatible, as it can be passed `404`.
 
 Sets a single option value.
 All the options are in binary format, except for
-`'Content-Format'`, `'Accept'` and `'ETag'`.
+`'Content-Format'`, `'Accept'`, `'Max-Age'` and `'ETag'`.
 See <a href='#registerOption'><code>registerOption</code></a>
  to know how to register more.
 
@@ -418,7 +422,7 @@ Information about the socket used for the communication (address and port).
 <a name="observewrite"></a>
 ### ObserveWriteStream
 
-An `ObserveWriteStream` object is 
+An `ObserveWriteStream` object is
 emitted by the `coap.createServer` `'response'` event as a response
 object.
 It may be used to set response status, headers and stream changing data
@@ -491,6 +495,8 @@ Opts is an optional object with the following optional properties:
 * `type`: `'udp4'` or `'udp6'` if we want an Agent on an IPv4 or IPv6
   UDP socket.
 
+* `socket`: use existing socket instead of creating a new one.
+
 -------------------------------------------------------
 <a name="globalAgent"></a>
 ### coap.globalAgent
@@ -503,6 +509,29 @@ The default [`Agent`](#agent) for IPv4.
 
 The default [`Agent`](#agent) for IPv6.
 
+-------------------------------------------------------
+<a name="updateTiming"></a>
+### coap.updateTiming
+
+You can update the CoAP timing settings, take a look at the examples:
+
+```js
+var coapTiming = {
+  ackTimeout:0.25,
+  ackRandomFactor: 1.0,
+  maxRetransmit: 3,
+  maxLatency: 2,
+  piggybackReplyMs: 10
+};
+coap.updateTiming(coapTiming);
+```
+
+-------------------------------------------------------
+<a name="defaultTiming"></a>
+### coap.defaultTiming
+
+Reset the CoAP timings to the default values
+
 <a name="contributing"></a>
 ## Contributing
 
@@ -512,11 +541,6 @@ __node-coap__ is an **OPEN Open Source Project**. This means that:
 
 See the [CONTRIBUTING.md](https://github.com/mcollina/node-coap/blob/master/CONTRIBUTING.md) file for more details.
 
-## Limitations
-
-The maximum packet size is 1280, as the
-[blockwise](http://datatracker.ietf.org/doc/draft-ietf-core-block/) is
-not supported yet.
 
 ## Contributors
 

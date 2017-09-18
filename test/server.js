@@ -263,6 +263,7 @@ describe('server', function() {
     , 'application/octet-stream': new Buffer([42])
     , 'application/exi': new Buffer([47])
     , 'application/json': new Buffer([50])
+    , 'application/cbor': new Buffer([60])
   }
 
   describe('with the \'Content-Format\' header in the request', function() {
@@ -464,22 +465,27 @@ describe('server', function() {
     })
 
     it('should calculate the response twice after the interval', function(done) {
-      var now = Date.now()
-      send(generate(packet))
+      var first = true
+      var delay = (params.exchangeLifetime * 1000)+1
 
-      server.once('request', function(req, res) {
-        res.end('42')
+      server.on('request', function(req, res) {
+        var now = Date.now()
 
-        clock.restore()
-        tk.travel(now + params.exchangeLifetime * 1000)
+        if (first) {
+          res.end('42')
+          first = false
+          setTimeout(function() {
+            send(generate(packet))
+          }, delay)
 
-        server.on('request', function(req, res) {
+          fastForward(100, delay)
+         } else {
           res.end('24')
           done()
-        })
-
-        send(generate(packet))
+        }
       })
+
+      send(generate(packet))
     })
 
     it('should include \'ETag\' in the response options', function(done) {
@@ -951,7 +957,7 @@ describe('server', function() {
 
 })
 
-describe('piggyback timing option', function() {
+describe('validate custom server options', function() {
 
   var server
   var port
@@ -974,9 +980,7 @@ describe('piggyback timing option', function() {
     client.send(message, 0, message.length, port, '127.0.0.1')
   }
 
-
   it('use custom piggyBackTimeout time', function(done) {
-    //GIVEN
     var piggyBackTimeout = 10
     var messages = 0;
     server = coap.createServer({ piggybackReplyMs: piggyBackTimeout })
@@ -987,11 +991,7 @@ describe('piggyback timing option', function() {
     client.on('message', function(msg) {
       messages++
     })
-
-    //WHEN
     send(new Buffer(3))
-
-    //THEN
     setTimeout(function() {
       expect(messages).to.eql(1)
       expect(server._options.piggybackReplyMs).to.eql(piggyBackTimeout)
@@ -1012,4 +1012,150 @@ describe('piggyback timing option', function() {
     done()
   })
 
+  it('use default sendAcksForNonConfirmablePackets', function(done) {
+    server = coap.createServer()
+    expect(server._options.sendAcksForNonConfirmablePackets).to.eql(true)
+    done()
+  })
+
+  it('define sendAcksForNonConfirmablePackets: true', function(done) {
+    server = coap.createServer({ sendAcksForNonConfirmablePackets: true })
+    expect(server._options.sendAcksForNonConfirmablePackets).to.eql(true)
+    done()
+  })
+
+  it('define sendAcksForNonConfirmablePackets: false', function(done) {
+    server = coap.createServer({ sendAcksForNonConfirmablePackets: false })
+    expect(server._options.sendAcksForNonConfirmablePackets).to.eql(false)
+    done()
+  })
+
+  it('define invalid sendAcksForNonConfirmablePackets setting', function(done) {
+    server = coap.createServer({ sendAcksForNonConfirmablePackets: 'moo' })
+    expect(server._options.sendAcksForNonConfirmablePackets).to.eql(true)
+    done()
+  })
+
+  function sendNonConfirmableMessage() {
+    var packet = {
+        confirmable: false
+      , messageId: 4242
+      , token: new Buffer(5)
+    }
+    send(generate(packet))
+  }
+
+  function sendConfirmableMessage() {
+    var packet = {
+        confirmable: true
+      , messageId: 4242
+      , token: new Buffer(5)
+    }
+    send(generate(packet))
+  }
+
+  it('should send ACK for non-confirmable message, sendAcksForNonConfirmablePackets=true', function(done) {
+    var messages = 0;
+    server = coap.createServer({ sendAcksForNonConfirmablePackets: true })
+    server.listen(port)
+    server.on('request', function(req, res) {
+      res.end('42')
+    })
+    client.on('message', function(msg) {
+      done()
+    })
+    sendNonConfirmableMessage()
+
+  })
+
+  it('should not send ACK for non-confirmable message, sendAcksForNonConfirmablePackets=false', function(done) {
+    var messages = 0;
+    server = coap.createServer({ sendAcksForNonConfirmablePackets: false })
+    server.listen(port)
+    server.on('request', function(req, res) {
+      res.end('42')
+    })
+    client.on('message', function(msg) {
+      messages++
+    })
+    sendNonConfirmableMessage()
+    setTimeout(function() {
+      expect(messages).to.eql(0)
+      done()
+    }, 30)
+  })
+
+  it('should send ACK for confirmable message, sendAcksForNonConfirmablePackets=true', function(done) {
+    var messages = 0;
+    server = coap.createServer({ sendAcksForNonConfirmablePackets: true })
+    server.listen(port)
+    server.on('request', function(req, res) {
+      res.end('42')
+    })
+    client.on('message', function(msg) {
+      done();
+    })
+    sendConfirmableMessage()
+  })
+
 })
+
+describe('server LRU', function() {
+  var server
+      , port
+      , clientPort
+      , client
+      , clock
+
+  var packet = {
+    confirmable: true
+    , messageId: 4242
+    , token: new Buffer(5)
+  }
+
+  beforeEach(function (done) {
+    clock = sinon.useFakeTimers()
+    port = nextPort()
+    server = coap.createServer()
+    server.listen(port, done)
+  })
+
+  beforeEach(function (done) {
+    clientPort = nextPort()
+    client = dgram.createSocket('udp4')
+    client.bind(clientPort, done)
+  })
+
+  afterEach(function () {
+    clock.restore()
+    client.close()
+    server.close()
+    tk.reset()
+  })
+
+  function send(message) {
+    client.send(message, 0, message.length, port, '127.0.0.1')
+  }
+
+  it('should remove old packets after < exchangeLifetime x 1.5', function (done) {
+    var messages = 0
+
+    send(generate(packet))
+    server.on('request', function (req, res) {
+      var now = Date.now()
+      res.end()
+
+      expect(server._lru.itemCount, 1)
+
+      clock.tick(params.exchangeLifetime * 500)
+
+      expect(server._lru.itemCount, 1)
+
+      clock.tick(params.exchangeLifetime * 1000)
+      expect(server._lru.itemCount, 0)
+      done()
+    })
+  })
+
+})
+

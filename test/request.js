@@ -79,11 +79,13 @@ describe('request', function() {
 
   it('should emit the errors in the req', function (done) {
     var req = request('coap://aaa.eee:' + 1234)
-    req.end(new Buffer('hello world'))
 
-    req.on('error', function () {
+    req.once('error', function () {
+      coap.globalAgent.abort(req)
       done()
     })
+
+    req.end(new Buffer('hello world'))
   })
 
   it('should error if the message is too big', function (done) {
@@ -479,6 +481,7 @@ describe('request', function() {
     , 'application/octet-stream': new Buffer([42])
     , 'application/exi': new Buffer([47])
     , 'application/json': new Buffer([50])
+    , 'application/cbor': new Buffer([60])
   }
 
   describe('with the \'Content-Format\' header in the outgoing message', function () {
@@ -531,6 +534,7 @@ describe('request', function() {
         var packet = parse(msg)
           , toSend = generate({
             messageId: packet.messageId
+            , code: '2.05'
             , token: packet.token
             , options: [{
               name: 'Content-Format'
@@ -588,6 +592,7 @@ describe('request', function() {
       var packet = parse(msg)
         , toSend = generate({
           messageId: packet.messageId
+          , code: '2.05'
           , token: packet.token
           , options: [{
             name: 'ETag'
@@ -614,6 +619,7 @@ describe('request', function() {
       var packet = parse(msg)
         , toSend = generate({
           messageId: packet.messageId
+          , code: '2.05'
           , token: packet.token
           , options: []
         })
@@ -655,34 +661,22 @@ describe('request', function() {
         setImmediate(fastForward.bind(null, increase, max - increase))
     }
 
-    it('should error after ~247 seconds', function (done) {
-      var req = doReq()
-
-      req.on('error', function (err) {
-        expect(err).to.have.property('message', 'No reply in 247s')
-        expect(err).to.have.property('retransmitTimeout', 247)
-        done()
-      })
-
-      fastForward(1000, 247 * 1000)
-    })
-
-    it('should timeout after ~247 seconds', function (done) {
+    it('should timeout after ~202 seconds', function (done) {
       var req = doReq()
 
       req.on('error', function () {
       })
 
       req.on('timeout', function (err) {
-        expect(err).to.have.property('message', 'No reply in 247s')
-        expect(err).to.have.property('retransmitTimeout', 247)
+        expect(err).to.have.property('message', 'No reply in 202s')
+        expect(err).to.have.property('retransmitTimeout', 202)
         done()
       })
 
-      fastForward(1000, 247 * 1000)
+      fastForward(1000, 202 * 1000)
     })
 
-    it('should retry four times before erroring', function (done) {
+    it('should not retry before timeout', function (done) {
       var req = doReq()
         , messages = 0
 
@@ -690,16 +684,15 @@ describe('request', function() {
         messages++
       })
 
-      req.on('error', function (err) {
-        // original one plus 4 retries
-        expect(messages).to.eql(5)
+      req.on('timeout', function (err) {
+        expect(messages).to.eql(1)
         done()
       })
 
       fastForward(100, 247 * 1000)
     })
 
-    it('should retry four times before 45s', function (done) {
+    it('should not retry before 45s', function (done) {
       var req = doReq()
         , messages = 0
 
@@ -708,12 +701,11 @@ describe('request', function() {
       })
 
       setTimeout(function () {
-        // original one plus 4 retries
-        expect(messages).to.eql(5)
+        expect(messages).to.eql(1)
         done()
       }, 45 * 1000)
 
-      fastForward(100, 45 * 1000)
+      fastForward(20, 45 * 1000)
     })
 
     it('should stop retrying if it receives a message', function (done) {
@@ -829,7 +821,7 @@ describe('request', function() {
         done()
       }, 45 * 1000)
 
-      fastForward(100, 45 * 1000)
+      fastForward(20, 45 * 1000)
     })
 
     it('should stop retrying if it receives an ack', function (done) {
