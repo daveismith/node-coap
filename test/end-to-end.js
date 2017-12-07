@@ -152,7 +152,8 @@ describe('end-to-end', function() {
   describe('formats', function() {
     var formats = [ 'text/plain', 'application/link-format',
       'application/xml', 'application/octet-stream',
-      'application/exi', 'application/json', 'application/cbor' ]
+      'application/exi', 'application/json', 'application/cbor',
+      'application/link-format+cbor', 'application/link-format+json' ]
 
     ;['Accept', 'Content-Format'].forEach(function(option) {
       formats.forEach(function(format) {

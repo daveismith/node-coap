@@ -482,6 +482,8 @@ describe('request', function() {
     , 'application/exi': new Buffer([47])
     , 'application/json': new Buffer([50])
     , 'application/cbor': new Buffer([60])
+    , 'application/link-format+cbor': new Buffer([254, 40])
+    , 'application/link-format+json': new Buffer([255, 225])
   }
 
   describe('with the \'Content-Format\' header in the outgoing message', function () {
